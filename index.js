@@ -47,6 +47,7 @@ function removePlayer(worldId, uid) {
   if (!room) return;
   if (!room.has(uid)) return;
   room.delete(uid);
+  console.log(`[방=${worldId}] ${uid} 퇴장 (남은 인원: ${room.size})`);
   broadcastLeave(worldId, uid);
   if (room.size === 0) rooms.delete(worldId);
 }
@@ -109,6 +110,7 @@ wss.on('connection', (ws) => {
       if (!uid) return;
       const room = getRoom(worldId);
       room.set(uid, { ws, state: { name: String(msg.name || '플레이어').slice(0, 24) }, lastSeenAt: Date.now() });
+      console.log(`[방=${worldId}] ${uid}(${msg.name}) 입장 (현재 인원: ${room.size}) - 방 안의 uid들: [${Array.from(room.keys()).join(', ')}]`);
       ws.send(JSON.stringify({ type: 'welcome', uid }));
       return;
     }
@@ -116,7 +118,10 @@ wss.on('connection', (ws) => {
     if (msg.type === 'state') {
       if (!uid || !worldId) return; // join을 먼저 안 했으면 무시
       const room = rooms.get(worldId);
-      if (!room || !room.has(uid)) return;
+      if (!room || !room.has(uid)) {
+        console.warn(`[state 무시됨] uid=${uid}, worldId=${worldId} - join 안 된 상태이거나 방이 없음`);
+        return;
+      }
       const entry = room.get(uid);
       // 화이트리스트 방식으로 필요한 필드만 받아서 저장 (임의 필드 주입 방지)
       const s = msg;
@@ -133,6 +138,10 @@ wss.on('connection', (ws) => {
         name: typeof s.name === 'string' ? s.name.slice(0, 24) : (entry.state.name || '플레이어'),
       };
       entry.lastSeenAt = Date.now();
+      if (!entry.gotFirstState) {
+        entry.gotFirstState = true;
+        console.log(`[방=${worldId}] ${uid} 첫 위치 정보 수신 (x=${entry.state.x}, y=${entry.state.y}, mode=${entry.state.mode})`);
+      }
       return;
     }
 
