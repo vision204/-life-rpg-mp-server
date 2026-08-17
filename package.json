@@ -1,0 +1,16 @@
+{
+  "name": "life-rpg-mp-server",
+  "version": "1.0.0",
+  "description": "Life RPG 전용 멀티플레이 WebSocket 서버 (RTDB 대체)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
