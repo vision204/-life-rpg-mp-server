@@ -16,12 +16,14 @@
 // 프로토콜 (JSON 텍스트 메시지):
 //   Client → Server
 //     { type: 'join', uid, name, world }
-//     { type: 'state', ...상태값 }     // x, y, rot, mode, moving, running, aiming, carImg, jetImg 등
+//     { type: 'state', ...상태값 }     // x, y, rot, mode, moving, running, aiming, carImg, jetImg, altitude, pvpEnabled 등
+//     { type: 'action', kind, targetUid?, x, y, rot, gunIcon?, amount?, fromName? }  // 총격 시각효과/PvP 피격 등 1회성 이벤트
 //     { type: 'ping', t }
 //   Server → Client
 //     { type: 'welcome', uid }
 //     { type: 'snapshot', players: { uid: {...} } }   // 주기적으로 방 전체 스냅샷 브로드캐스트
 //     { type: 'leave', uid }
+//     { type: 'action', kind, fromUid, x, y, rot, gunIcon?, amount?, fromName? }  // 위 action을 그대로(또는 targetUid에게만) 중계
 //     { type: 'pong', t }
 // =====================================================
 
@@ -145,6 +147,8 @@ wss.on('connection', (ws) => {
         aiming: !!s.aiming,
         carImg: typeof s.carImg === 'string' ? s.carImg.slice(0, 64) : null,
         jetImg: typeof s.jetImg === 'string' ? s.jetImg.slice(0, 64) : null,
+        altitude: Number(s.altitude) || 0,
+        pvpEnabled: !!s.pvpEnabled,
         vehicles,
         name: typeof s.name === 'string' ? s.name.slice(0, 24) : (entry.state.name || '플레이어'),
       };
@@ -158,6 +162,35 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'ping') {
       ws.send(JSON.stringify({ type: 'pong', t: msg.t }));
+      return;
+    }
+
+    // [요청 반영] 총격/피격 같은 "그 순간에만 의미 있는" 1회성 이벤트 중계.
+    // 주기적으로 보내는 state(snapshot)와 달리, 즉시 한 번만 관련된 사람에게 쏴줌.
+    // targetUid가 있으면(예: 피격 데미지) 그 사람에게만, 없으면(예: 총격 시각효과) 방 전체에 브로드캐스트.
+    if (msg.type === 'action') {
+      if (!uid || !worldId) return;
+      const room = rooms.get(worldId);
+      if (!room || !room.has(uid)) return;
+      const kind = typeof msg.kind === 'string' ? msg.kind.slice(0, 32) : '';
+      if (!kind) return;
+      const targetUid = typeof msg.targetUid === 'string' ? msg.targetUid.slice(0, 64) : null;
+      const payload = JSON.stringify({
+        type: 'action', kind, fromUid: uid,
+        x: Number(msg.x) || 0, y: Number(msg.y) || 0, rot: Number(msg.rot) || 0,
+        gunIcon: typeof msg.gunIcon === 'string' ? msg.gunIcon.slice(0, 8) : null,
+        amount: Number(msg.amount) || 0,
+        fromName: typeof msg.fromName === 'string' ? msg.fromName.slice(0, 24) : '플레이어',
+      });
+      if (targetUid) {
+        const target = room.get(targetUid);
+        if (target && target.ws.readyState === WebSocket.OPEN) target.ws.send(payload);
+      } else {
+        room.forEach((entry, otherUid) => {
+          if (otherUid === uid) return;
+          if (entry.ws.readyState === WebSocket.OPEN) entry.ws.send(payload);
+        });
+      }
       return;
     }
   });
