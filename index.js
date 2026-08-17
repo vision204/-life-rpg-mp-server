@@ -125,6 +125,16 @@ wss.on('connection', (ws) => {
       const entry = room.get(uid);
       // 화이트리스트 방식으로 필요한 필드만 받아서 저장 (임의 필드 주입 방지)
       const s = msg;
+      // [요청 반영] 소환해뒀지만 안 타고 있는 차/전투기 목록도 같이 중계함. 여기도 화이트리스트 방식으로
+      // 개별 항목의 필드까지 걸러서 저장 (배열 길이/문자열 길이 상한을 둬서 비정상 트래픽 방지)
+      const vehicles = Array.isArray(s.vehicles) ? s.vehicles.slice(0, 8).map((v) => ({
+        id: typeof v.id === 'string' ? v.id.slice(0, 64) : '',
+        kind: v.kind === 'jet' ? 'jet' : 'car',
+        img: typeof v.img === 'string' ? v.img.slice(0, 64) : null,
+        x: Number(v.x) || 0,
+        y: Number(v.y) || 0,
+        rot: Number(v.rot) || 0,
+      })).filter((v) => v.id) : [];
       entry.state = {
         x: Number(s.x) || 0,
         y: Number(s.y) || 0,
@@ -135,6 +145,7 @@ wss.on('connection', (ws) => {
         aiming: !!s.aiming,
         carImg: typeof s.carImg === 'string' ? s.carImg.slice(0, 64) : null,
         jetImg: typeof s.jetImg === 'string' ? s.jetImg.slice(0, 64) : null,
+        vehicles,
         name: typeof s.name === 'string' ? s.name.slice(0, 24) : (entry.state.name || '플레이어'),
       };
       entry.lastSeenAt = Date.now();
